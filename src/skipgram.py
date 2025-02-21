@@ -88,7 +88,9 @@ class SkipGramNeg(nn.Module):
         noise_words = noise_words.to(device)
 
         # Reshape output vectors to size (batch_size, n_samples, n_embed)
-        noise_vectors: torch.Tensor = noise_words.reshape(batch_size, n_samples, -1)
+        noise_vectors: torch.Tensor = noise_words.view(
+            batch_size, n_samples, self.n_embed
+        )
 
         return noise_vectors
 
@@ -126,16 +128,34 @@ class NegativeSamplingLoss(nn.Module):
         Returns:
             A tensor containing the average loss for the batch.
         """
+        # out_loss = (
+        #     (input_vectors.unsqueeze(1) @ output_vectors.unsqueeze(-1))
+        #     .sigmoid()
+        #     .log()
+        #     .sum()
+        # )
+
+        # # Compute log-sigmoid loss for incorrect classifications
+        # noise_loss = (
+        #     (input_vectors.unsqueeze(1) @ -noise_vectors.transpose(1, 2))
+        #     .sigmoid()
+        #     .log()
+        #     .sum()
+        # )
 
         # Compute log-sigmoid loss for correct classifications
         out_loss = torch.log(
-            torch.nn.functional.sigmoid(output_vectors @ input_vectors.T)
+            torch.nn.functional.sigmoid(
+                input_vectors.unsqueeze(1) @ output_vectors.unsqueeze(-1)
+            )
         ).sum()
 
         # Compute log-sigmoid loss for incorrect classifications
         noise_loss = torch.log(
-            torch.nn.functional.sigmoid(-noise_vectors @ input_vectors.T)
+            torch.nn.functional.sigmoid(
+                input_vectors.unsqueeze(1) @ -noise_vectors.transpose(1, 2)
+            )
         ).sum()
 
         # Return the negative sum of the correct and noisy log-sigmoid losses, averaged over the batch
-        return -(out_loss + noise_loss) / (len(output_vectors) + len(noise_vectors))
+        return -(out_loss + noise_loss) / input_vectors.shape[0]

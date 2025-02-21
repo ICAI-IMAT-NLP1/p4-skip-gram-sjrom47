@@ -34,7 +34,7 @@ def main():
 
     embedding_dim = 300
     batch_size = 512
-    epochs = 100
+    epochs = 5
     learning_rate = 0.003
     window_size = 5
     print_every = 1500
@@ -43,6 +43,7 @@ def main():
     model_path = os.path.join(runs_folder, model_filename)  # Full path to the model
     train_model = True
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    # device = "cpu"
 
     print("Step 1: Loading and preprocessing data...")
     tokens = load_and_preprocess_data(file_path)

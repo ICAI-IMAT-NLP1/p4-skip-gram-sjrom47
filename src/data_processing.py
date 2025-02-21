@@ -41,7 +41,9 @@ def create_lookup_tables(words: List[str]) -> Tuple[Dict[str, int], Dict[int, st
     """
     word_counts: Counter = Counter(words)
     # Sorting the words from most to least frequent in text occurrence.
-    sorted_vocab: List[str] = sorted(word_counts, key=lambda word: word_counts[word])
+    sorted_vocab: List[str] = sorted(
+        word_counts, key=lambda word: word_counts[word], reverse=True
+    )
 
     # Create int_to_vocab and vocab_to_int dictionaries.
     int_to_vocab: Dict[int, str] = {i: word for i, word in enumerate(sorted_vocab)}
@@ -74,14 +76,16 @@ def subsample_words(
     # Convert words to integers
     int_words: List[int] = [vocab_to_int[word] for word in words]
 
+    total_words: int = len(int_words)
+
     freqs: Dict[str, float] = {
-        i: counts / len(int_words) for i, counts in Counter(words).items()
+        i: counts / total_words for i, counts in Counter(words).items()
+    }
+    probs: Dict[str, float] = {
+        word: 1 - torch.sqrt(torch.tensor(threshold / freqs[word])) for word in freqs
     }
     train_words: List[int] = [
-        vocab_to_int[word]
-        for word, prob in freqs.items()
-        if max(int(1 - torch.sqrt(torch.tensor(threshold / prob))), 0)
-        < torch.rand(1).item()
+        vocab_to_int[word] for word in words if probs[word] < torch.rand(1).item()
     ]
 
     return train_words, freqs
@@ -126,19 +130,18 @@ def get_batches(words: List[int], batch_size: int, window_size: int = 5):
         - The first list contains input words (repeated for each of their context words).
         - The second list contains the corresponding target context words.
     """
+    n_batches: int = len(words) // batch_size
+
+    words = words[: n_batches * batch_size]
 
     for b in range(0, len(words), batch_size):
         inputs: List[int]
         targets: List[int]
         inputs, targets = [], []
-        for idx in range(b, min(b + batch_size, len(words))):
-            window: int = int(torch.randint(1, window_size + 1, (1,)))
-            for i in range(max(0, idx - window), idx):
-                inputs.append(idx)
-                targets.append(i)
-            for j in range(idx + 1, min(len(words), idx + window + 1)):
-                inputs.append(idx)
-                targets.append(j)
+        for idx in range(b, b + batch_size):
+            batch_words = get_target(words, idx, window_size)
+            inputs.extend([words[idx]] * len(batch_words))
+            targets.extend(batch_words)
         yield inputs, targets
 
 
@@ -168,8 +171,8 @@ def cosine_similarity(
         sim = (a . b) / |a||b| where `a` and `b` are embedding vectors.
     """
     embedding = embedding.to(device)
-    norm_tensor: torch.Tensor = torch.norm(embedding.weight, p=2, dim=1)
-    valid_examples: torch.Tensor = torch.randint(1, valid_window, (valid_size,)).to(
+    norm_tensor: torch.Tensor = torch.norm(embedding.weight, dim=1)
+    valid_examples: torch.Tensor = torch.randint(0, valid_window, (valid_size,)).to(
         device
     )
     valid_embeddings: torch.Tensor = embedding(valid_examples)
